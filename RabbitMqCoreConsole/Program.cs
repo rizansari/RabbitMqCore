@@ -4,6 +4,9 @@ using RabbitMqCore.DependencyInjectionExtensions;
 using RabbitMqCore;
 using Microsoft.Extensions.Logging;
 using Log4NetCore;
+using Newtonsoft.Json;
+using RabbitMqCore.Events;
+using RabbitMqCore.Common;
 
 namespace RabbitMqCoreConsole
 {
@@ -27,59 +30,73 @@ namespace RabbitMqCoreConsole
             var logger = serviceProvider.GetService<ILoggerFactory>()
                 .CreateLogger<Program>();
 
-            logger.LogInformation("hello world");
-
+            // get QueueService
             var rmq = serviceProvider.GetRequiredService<IQueueService>();
 
 
-            //var pub = rmq.CreatePublisher(options =>
+            // publisher examples
+
+            // publish on exchange
+            //var pub1 = rmq.CreatePublisher(options =>
             //{
             //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
-            //    options.ExchangeName = "exchange.fanout";
-            //    options.ExchangeType = RabbitMqCore.Enums.ExchangeType.fanout;
+            //    options.ExchangeName = "exchange.1";
+            //    options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
             //});
+            var obj = new SimpleObject() { ID = 1, Name = "One" };
+            var message = new RabbitMessageOutbound()
+            {
+                Message = JsonConvert.SerializeObject(obj)
+            };
+            //pub1.SendMessage(message);
 
-            //var obj = new SimpleObject() { ID = 1, Name = "One" };
-            //pub.SendMessage(obj);
-
+            // publish on exchange with routing key
             //var pub2 = rmq.CreatePublisher(options =>
             //{
-            //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Queue;
-            //    options.QueueName = "queue.test";
-            //});
-            //pub2.SendMessage(obj);
-
-            //var pub3 = rmq.CreatePublisher(options =>
-            //{
             //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+            //    options.ExchangeName = "exchange.1";
             //    options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
-            //    options.ExchangeName = "exchange.withrouting";
             //    options.RoutingKeys.Add("routing.key");
             //});
-            //pub3.SendMessage(obj);
+            //var obj2 = new SimpleObject() { ID = 2, Name = "Two" };
+            //var message2 = new RabbitMessageOutbound()
+            //{
+            //    Message = JsonConvert.SerializeObject(obj2)
+            //};
+            //pub2.SendMessage(message2);
 
-            //logger.LogDebug("message published");
+            // publish on queue
+            var pub3 = rmq.CreatePublisher(options =>
+            {
+                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Queue;
+                options.QueueName = "queue.3";
+                options.Arguments.Add(ArgumentStrings.XMessageTTL, 8000);
+            });
+            pub3.SendMessage(message);
 
+
+
+            // subscriber examples
 
             // subscriber with exchange queue and routing key
-            var sub1 = rmq.CreateSubscriber(options =>
-            {
-                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
-                options.ExchangeName = "exchange.1";
-                options.QueueName = "queue.1";
-                options.RoutingKeys.Add("routing.key.1");
-            });
-            sub1.Subscribe(opt => { Console.WriteLine("sub 1 called: {0}", opt.ToString()); });
+            //var sub1 = rmq.CreateSubscriber(options =>
+            //{
+            //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+            //    options.ExchangeName = "exchange.1";
+            //    options.QueueName = "queue.1";
+            //    options.RoutingKeys.Add("routing.key.1");
+            //});
+            //sub1.Subscribe(opt => { Console.WriteLine("sub 1 called: {0}", opt.ToString()); });
 
             // subscriber with exchange queue and routing key
-            var sub2 = rmq.CreateSubscriber(options =>
-            {
-                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
-                options.ExchangeName = "exchange.1";
-                options.QueueName = "queue.2";
-                options.RoutingKeys.Add("routing.key.2");
-            });
-            sub2.Subscribe(opt => { Console.WriteLine("sub 2 called: {0}", opt.ToString()); });
+            //var sub2 = rmq.CreateSubscriber(options =>
+            //{
+            //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+            //    options.ExchangeName = "exchange.1";
+            //    options.QueueName = "queue.2";
+            //    options.RoutingKeys.Add("routing.key.2");
+            //});
+            //sub2.Subscribe(opt => { Console.WriteLine("sub 2 called: {0}", opt.ToString()); });
 
             // subscribe with queue only
             //var sub3 = rmq.CreateSubscriber(options =>
@@ -112,7 +129,7 @@ namespace RabbitMqCoreConsole
             //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
             //    options.ExchangeName = "exchange.1";
             //    options.QueueName = "queue.4";
-            //    options.Arguments.Add("x-message-ttl", 5000);
+            //    options.Arguments.Add(ArgumentStrings.XMessageTTL, 5000);
             //});
             //sub6.Subscribe(opt => { Console.WriteLine("sub 6 called: {0}", opt.ToString()); });
 

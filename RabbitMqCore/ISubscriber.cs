@@ -7,7 +7,7 @@ namespace RabbitMqCore
 {
     public interface ISubscriber
     {
-        void Subscribe(Action<RabbitMessageEventArgs> action);
+        void Subscribe(Action<RabbitMessageInbound> action);
         void Unsubscribe();
     }
 }

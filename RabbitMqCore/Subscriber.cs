@@ -8,11 +8,16 @@ namespace RabbitMqCore
 {
     public class Subscriber : ISubscriber
     {
-        IQueueService _queueService;
-        SubscriberOptions _options;
+        protected IQueueService _queueService;
+        protected SubscriberOptions _options;
 
-        Action<RabbitMessageEventArgs> _onMessage;
+        private Action<RabbitMessageInbound> _onMessage;
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="queueService"></param>
+        /// <param name="options"></param>
         public Subscriber(IQueueService queueService, SubscriberOptions options)
         {
             _queueService = queueService;
@@ -33,7 +38,7 @@ namespace RabbitMqCore
         /// 
         /// </summary>
         /// <param name="action"></param>
-        void ISubscriber.Subscribe(Action<RabbitMessageEventArgs> action)
+        void ISubscriber.Subscribe(Action<RabbitMessageInbound> action)
         {
             _onMessage = action;
             _queueService.Subscribe(_options, opt => _onMessage(opt));

@@ -40,7 +40,7 @@ namespace RabbitMqCore
         public event Action OnReconnected;
         //public event Action<object> onMessage;
 
-        public Dictionary<string, Action<RabbitMessageEventArgs>> _consumers;
+        public Dictionary<string, Action<RabbitMessageInbound>> _consumers;
 
         int _reconnectAttemptsCount = 0;
 
@@ -137,7 +137,7 @@ namespace RabbitMqCore
                 _consumer = new AsyncEventingBasicConsumer(_consumeChannel);
                 _consumer.Received += _consumer_Received;
 
-                _consumers = new Dictionary<string, Action<RabbitMessageEventArgs>>();
+                _consumers = new Dictionary<string, Action<RabbitMessageInbound>>();
 
                 _connectionBlocked = false;
 
@@ -236,17 +236,24 @@ namespace RabbitMqCore
         /// </summary>
         /// <param name="payload"></param>
         /// <param name="options"></param>
-        public void SendMessage(string payload, PublisherOptions options)
+        public void SendMessage(RabbitMessageOutbound message, PublisherOptions options)
         {
             try
             {
+                IBasicProperties props = null;
+                if (string.IsNullOrEmpty(message.CorrelationId))
+                {
+                    props = _sendChannel.CreateBasicProperties();
+                    props.CorrelationId = message.CorrelationId;
+                }
+
                 if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
                 {
-                    _sendChannel.BasicPublish(options.ExchangeName, options.RoutingKeys.Count > 0 ? options.RoutingKeys.First() : "", null, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(payload)));
+                    _sendChannel.BasicPublish(options.ExchangeName, options.RoutingKeys.Count > 0 ? options.RoutingKeys.First() : "", props, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(message.Message)));
                 }
                 else if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Queue)
                 {
-                    _sendChannel.BasicPublish("", options.QueueName, null, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(payload)));
+                    _sendChannel.BasicPublish("", options.QueueName, props, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(message.Message)));
                 }
             }
             catch (Exception ex)
@@ -406,7 +413,7 @@ namespace RabbitMqCore
         /// 
         /// </summary>
         /// <param name="onMessage"></param>
-        public void Subscribe(SubscriberOptions options, Action<RabbitMessageEventArgs> onMessage)
+        public void Subscribe(SubscriberOptions options, Action<RabbitMessageInbound> onMessage)
         {
             if (options == null)
                 throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
@@ -419,11 +426,17 @@ namespace RabbitMqCore
             _consumers.Add(tag, onMessage);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="event"></param>
+        /// <returns></returns>
         private Task _consumer_Received(object sender, BasicDeliverEventArgs @event)
         {
             var onMessage = _consumers[@event.ConsumerTag];
 
-            var message = new RabbitMessageEventArgs();
+            var message = new RabbitMessageInbound();
             message.Message = Encoding.UTF8.GetString(@event.Body.ToArray());
             message.ConsumerTag = @event.ConsumerTag;
             message.DeliveryTag = @event.DeliveryTag;
@@ -439,6 +452,10 @@ namespace RabbitMqCore
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="options"></param>
         public void Unsubscribe(SubscriberOptions options)
         {
             if (options == null)
