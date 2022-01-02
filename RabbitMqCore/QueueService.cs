@@ -326,6 +326,33 @@ namespace RabbitMqCore
             {
                 var temp = new SubscriberOptions();
                 options(temp);
+
+                if (temp.ArgumentsEx != null &&  temp.ArgumentsEx.Count > 0)
+                {
+                    foreach (var arg in temp.ArgumentsEx)
+                    {
+                        if (arg.Value.Contains(":"))
+                        {
+                            var splits = arg.Value.Split(':');
+                            if (splits[0] == "int")
+                            {
+                                temp.Arguments.Add(arg.Key, Convert.ToInt32(splits[1]));
+                            }
+                            else if (splits[0] == "string")
+                            {
+                                temp.Arguments.Add(arg.Key, splits[1]);
+                            }
+                            else
+                            {
+                                temp.Arguments.Add(arg.Key, splits[1]);
+                            }
+                        }
+                        else
+                        {
+                            temp.Arguments.Add(arg.Key, arg.Value);
+                        }
+                    }
+                }
                 return new Subscriber(this, temp);
             }
             catch (Exception ex)

@@ -9,11 +9,11 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>http://rizwanansari.net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/rizansari/RabbitMqCore</RepositoryUrl>
-    <PackageReleaseNotes>First Release</PackageReleaseNotes>
+    <PackageReleaseNotes>fixes</PackageReleaseNotes>
     <PackageTags>RabbitMQ, .NET Core, Dependency Injection, RabbitMQ Client</PackageTags>
     <PackageId>RabbitMQ.NET</PackageId>
     <Product>RabbitMQ.NET</Product>
-    <Version>1.0.1</Version>
+    <Version>1.0.3</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 

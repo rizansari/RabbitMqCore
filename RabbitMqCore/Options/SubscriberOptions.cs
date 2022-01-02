@@ -1,4 +1,5 @@
-﻿using RabbitMqCore.Enums;
+﻿using RabbitMqCore.Common;
+using RabbitMqCore.Enums;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -47,5 +48,9 @@ namespace RabbitMqCore.Options
         /// 
         /// </summary>
         public string ConsumerTag { get; internal set; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public IDictionary<string, string> ArgumentsEx { get; set; }
     }
 }
