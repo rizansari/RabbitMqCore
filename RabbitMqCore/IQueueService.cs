@@ -12,7 +12,10 @@ namespace RabbitMqCore
         IConnection Connection { get; }
         
         RabbitMQCoreOptions Options { get; }
-        
+
+        public event Action OnConnectionShutdown;
+        public event Action OnReconnected;
+
         IPublisher CreatePublisher(Action<PublisherOptions> options);
         void SendMessage(RabbitMessageOutbound message, PublisherOptions options);
         void CreateExchangeOrQueue(PublisherOptions options);

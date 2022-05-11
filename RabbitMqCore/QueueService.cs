@@ -42,7 +42,7 @@ namespace RabbitMqCore
 
         public Dictionary<string, Action<RabbitMessageInbound>> _consumers;
 
-        int _reconnectAttemptsCount = 0;
+        
 
         public IConnection Connection
         {
@@ -147,7 +147,8 @@ namespace RabbitMqCore
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Error closing connection.");
+                //_log.LogError(ex, "Error in Connect.");
+                throw ex;
             }
         }
 
@@ -198,6 +199,8 @@ namespace RabbitMqCore
             _log.LogDebug("Reconnect requested");
             Cleanup();
 
+            int _reconnectAttemptsCount = 0;
+
             var mres = new ManualResetEventSlim(false); // state is initially false
 
             while (!mres.Wait(Options.ReconnectionTimeout)) // loop until state is true, checking every Options.ReconnectionTimeout
@@ -216,9 +219,9 @@ namespace RabbitMqCore
                 }
                 catch (Exception e)
                 {
+                    _log.LogCritical(e, $"Connection failed. Detais: {e.Message}. Reconnect attempts: {_reconnectAttemptsCount}", e);
                     _reconnectAttemptsCount++;
                     Thread.Sleep(Options.ReconnectionTimeout);
-                    _log.LogCritical(e, $"Connection failed. Detais: {e.Message}. Reconnect attempts: {_reconnectAttemptsCount}", e);
                 }
             }
         }
