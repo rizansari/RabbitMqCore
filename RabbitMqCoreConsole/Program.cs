@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using RabbitMqCore.Events;
 using RabbitMqCore.Common;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace RabbitMqCoreConsole
 {
@@ -85,6 +86,21 @@ namespace RabbitMqCoreConsole
 
             // subscriber examples
 
+            // subscriber with exchange queue
+            var a = new Dictionary<string, string>();
+            a.Add("x-max-length", "int:50");
+            var sub1 = rmq.CreateSubscriber(options =>
+            {
+                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                options.ExchangeName = "exchange.1";
+                options.QueueName = "queue.1";
+                options.ArgumentsEx = a;
+            });
+            sub1.Subscribe(opt =>
+            {
+                Console.WriteLine("sub 1 called: {0}", opt.ToString());
+            });
+
             // subscriber with exchange queue and routing key
             //var sub1 = rmq.CreateSubscriber(options =>
             //{
@@ -118,12 +134,19 @@ namespace RabbitMqCoreConsole
             //sub3.Subscribe(opt => { Console.WriteLine("sub 3 message:{0}", opt.Message); });
 
             // subscribe with exchange only
-            var sub4 = rmq.CreateSubscriber(options =>
-            {
-                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
-                options.ExchangeName = "exchange.1";
-            });
-            sub4.Subscribe(opt => { Console.WriteLine("sub 4 called: {0}", opt.ToString()); });
+            //var sub4 = rmq.CreateSubscriber(options =>
+            //{
+            //    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+            //    options.ExchangeName = "exchange.1";
+            //});
+            //sub4.Subscribe(opt =>
+            //{
+            //    Console.WriteLine("sub 4 called: {0}", opt.ToString());
+            //    //System.Threading.Thread.Sleep(1000);
+            //});
+
+            Thread thread = new Thread(new ThreadStart(Run));
+            thread.Start();
 
             // subscribe with exchange and routing key
             //var sub5 = rmq.CreateSubscriber(options =>
@@ -152,6 +175,33 @@ namespace RabbitMqCoreConsole
             //Console.ReadLine();
 
             rmq.Dispose();
+        }
+
+        private static void Run()
+        {
+            var pub1 = rmq.CreatePublisher(options =>
+            {
+                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                options.ExchangeName = "exchange.1";
+                options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
+            });
+            var obj = new SimpleObject() { ID = 1, Name = "One" };
+            var message = new RabbitMessageOutbound()
+            {
+                Message = JsonConvert.SerializeObject(obj)
+            };
+
+            int count = 1;
+            while (count <= 50)
+            {
+                obj = new SimpleObject() { ID = count++, Name = "One" };
+                message = new RabbitMessageOutbound()
+                {
+                    Message = JsonConvert.SerializeObject(obj)
+                };
+                pub1.SendMessage(message);
+                System.Threading.Thread.Sleep(100);
+            }
         }
 
         private static void Rmq_OnReconnected()
