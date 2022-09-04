@@ -42,8 +42,6 @@ namespace RabbitMqCore
 
         public Dictionary<string, Action<RabbitMessageInbound>> _consumers;
 
-        
-
         public IConnection Connection
         {
             get { return _connection; }
@@ -70,16 +68,28 @@ namespace RabbitMqCore
                     _connection.CallbackException -= Connection_CallbackException;
                     _connection.ConnectionBlocked -= Connection_ConnectionBlocked;
                 }
+
                 // Closing send channel.
                 if (_sendChannel != null)
                 {
                     _sendChannel.CallbackException -= Channel_CallbackException;
                 }
 
+                // Closing consume channel.
+                if (_consumeChannel != null)
+                {
+                    _consumeChannel.CallbackException -= Channel_CallbackException;
+                }
+
+                if (_consumer != null)
+                {
+                    _consumer.Received -= _consumer_Received;
+                }
+
                 OnConnectionShutdown?.Invoke();
                 // Closing connection.
                 if (_connection?.IsOpen == true)
-                    _connection.Close(TimeSpan.FromSeconds(1));
+                    _connection.Close(TimeSpan.FromSeconds(5));
             }
             catch (Exception ex)
             {
@@ -178,7 +188,7 @@ namespace RabbitMqCore
         {
             if (e != null)
                 _log.LogError($"Connection broke! Reason: {0}", e.ReplyText);
-
+            _connectionBlocked = true;
             Reconnect();
         }
 
@@ -196,33 +206,45 @@ namespace RabbitMqCore
         /// </summary>
         void Reconnect()
         {
-            _log.LogDebug("Reconnect requested");
-            Cleanup();
-
-            int _reconnectAttemptsCount = 0;
-
-            var mres = new ManualResetEventSlim(false); // state is initially false
-
-            while (!mres.Wait(Options.ReconnectionTimeout)) // loop until state is true, checking every Options.ReconnectionTimeout
+            try
             {
-                if (_reconnectAttemptsCount > Options.ReconnectionAttemptsCount)
-                    throw new ReconnectAttemptsExceededException($"Max reconnect attempts {Options.ReconnectionAttemptsCount} reached.");
+                _log.LogDebug("Reconnect requested");
+                Cleanup();
 
-                try
+                int _reconnectAttemptsCount = 0;
+
+                var mres = new ManualResetEventSlim(false); // state is initially false
+
+                while (!mres.Wait(Options.ReconnectionTimeout)) // loop until state is true, checking every Options.ReconnectionTimeout
                 {
-                    _log.LogDebug($"Trying to connect with reconnect attempt {0}", _reconnectAttemptsCount);
-                    Connect();
-                    _reconnectAttemptsCount = 0;
-                    OnReconnected?.Invoke();
-                    break;
-                    //mres.Set(); // state set to true - breaks out of loop
+                    if (_reconnectAttemptsCount > Options.ReconnectionAttemptsCount)
+                        throw new ReconnectAttemptsExceededException($"Max reconnect attempts {Options.ReconnectionAttemptsCount} reached.");
+
+                    try
+                    {
+                        _log.LogDebug("Trying to connect with reconnect attempt {0}", _reconnectAttemptsCount);
+                        Connect();
+                        _reconnectAttemptsCount = 0;
+                        OnReconnected?.Invoke();
+                        break;
+                        //mres.Set(); // state set to true - breaks out of loop
+                    }
+                    catch (Exception e)
+                    {
+                        _log.LogCritical(e, $"Connection failed. Detais: {e.Message}. Reconnect attempts: {_reconnectAttemptsCount}");
+                        _reconnectAttemptsCount++;
+                        Thread.Sleep(Options.ReconnectionTimeout);
+                    }
                 }
-                catch (Exception e)
-                {
-                    _log.LogCritical(e, $"Connection failed. Detais: {e.Message}. Reconnect attempts: {_reconnectAttemptsCount}", e);
-                    _reconnectAttemptsCount++;
-                    Thread.Sleep(Options.ReconnectionTimeout);
-                }
+            }
+            catch (ReconnectAttemptsExceededException ex)
+            {
+                _log.LogCritical(ex, $"ReconnectAttemptsExceededException Connection failed. Detais: {ex.Message}.");
+                throw ex;
+            }
+            catch (Exception ex)
+            {
+                _log.LogCritical(ex, $"Connection failed. Detais: {ex.Message}.");
             }
         }
 
@@ -244,11 +266,13 @@ namespace RabbitMqCore
             try
             {
                 IBasicProperties props = null;
-                if (string.IsNullOrEmpty(message.CorrelationId))
+                if (!string.IsNullOrEmpty(message.CorrelationId))
                 {
                     props = _sendChannel.CreateBasicProperties();
                     props.CorrelationId = message.CorrelationId;
                 }
+
+                CheckSendChannelOpened();
 
                 if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
                 {
@@ -262,7 +286,7 @@ namespace RabbitMqCore
             catch (Exception ex)
             {
                 _log.LogError(ex, $"Send message failed. {options.ExchangeName}/{options.QueueName}");
-                throw ex;
+                throw new OutboundMessageFailedException("Send message failed", message, ex);
             }
         }
 
@@ -278,7 +302,7 @@ namespace RabbitMqCore
             {
                 var temp = new PublisherOptions();
                 options(temp);
-                return new Publisher(this, temp);
+                return new Publisher(this, temp, _log);
             }
             catch (Exception ex)
             {
@@ -356,7 +380,7 @@ namespace RabbitMqCore
                         }
                     }
                 }
-                return new Subscriber(this, temp);
+                return new Subscriber(this, temp, _log);
             }
             catch (Exception ex)
             {
@@ -464,20 +488,27 @@ namespace RabbitMqCore
         /// <returns></returns>
         private Task _consumer_Received(object sender, BasicDeliverEventArgs @event)
         {
-            var onMessage = _consumers[@event.ConsumerTag];
+            try
+            {
+                var onMessage = _consumers[@event.ConsumerTag];
 
-            var message = new RabbitMessageInbound();
-            message.Message = Encoding.UTF8.GetString(@event.Body.ToArray());
-            message.ConsumerTag = @event.ConsumerTag;
-            message.DeliveryTag = @event.DeliveryTag;
-            message.Exchange = @event.Exchange;
-            message.Redelivered = @event.Redelivered;
-            message.RoutingKey = @event.RoutingKey;
-            //message.Bytes = @event.Body.ToArray();
-            //message.BasicProperties = @event.BasicProperties;
-            message.CorrelationId = @event.BasicProperties.CorrelationId;
+                var message = new RabbitMessageInbound();
+                message.Message = Encoding.UTF8.GetString(@event.Body.ToArray());
+                message.ConsumerTag = @event.ConsumerTag;
+                message.DeliveryTag = @event.DeliveryTag;
+                message.Exchange = @event.Exchange;
+                message.Redelivered = @event.Redelivered;
+                message.RoutingKey = @event.RoutingKey;
+                //message.Bytes = @event.Body.ToArray();
+                //message.BasicProperties = @event.BasicProperties;
+                message.CorrelationId = @event.BasicProperties.CorrelationId;
 
-            onMessage.Invoke(message);
+                onMessage.Invoke(message);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError($"_consumer_Received.");
+            }
 
             return Task.CompletedTask;
         }
@@ -491,7 +522,14 @@ namespace RabbitMqCore
             if (options == null)
                 throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
 
-            _consumeChannel.BasicCancel(options.ConsumerTag);
+            try
+            {
+                _consumeChannel.BasicCancel(options.ConsumerTag);
+            }
+            catch (Exception ex)
+            {
+
+            }
         }
     }
 }

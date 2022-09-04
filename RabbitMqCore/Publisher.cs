@@ -1,4 +1,5 @@
-﻿using RabbitMqCore.Events;
+﻿using Microsoft.Extensions.Logging;
+using RabbitMqCore.Events;
 using RabbitMqCore.Options;
 using System;
 using System.Collections.Generic;
@@ -10,12 +11,18 @@ namespace RabbitMqCore
     {
         protected IQueueService _queueService;
 
+        readonly ILogger<IQueueService> _log;
+
         protected PublisherOptions _options;
 
-        public Publisher(IQueueService queueService, PublisherOptions options)
+        public Publisher(
+            IQueueService queueService, 
+            PublisherOptions options,
+            ILogger<IQueueService> log)
         {
             _queueService = queueService;
             _options = options;
+            _log = log;
             _queueService.CreateExchangeOrQueue(_options);
         }
 

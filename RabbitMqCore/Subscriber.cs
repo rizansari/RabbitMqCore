@@ -1,4 +1,5 @@
-﻿using RabbitMqCore.Events;
+﻿using Microsoft.Extensions.Logging;
+using RabbitMqCore.Events;
 using RabbitMqCore.Options;
 using System;
 using System.Collections.Generic;
@@ -11,6 +12,8 @@ namespace RabbitMqCore
         protected IQueueService _queueService;
         protected SubscriberOptions _options;
 
+        readonly ILogger<IQueueService> _log;
+
         private Action<RabbitMessageInbound> _onMessage;
 
         /// <summary>
@@ -18,10 +21,14 @@ namespace RabbitMqCore
         /// </summary>
         /// <param name="queueService"></param>
         /// <param name="options"></param>
-        public Subscriber(IQueueService queueService, SubscriberOptions options)
+        public Subscriber(
+            IQueueService queueService, 
+            SubscriberOptions options,
+            ILogger<IQueueService> log)
         {
             _queueService = queueService;
             _options = options;
+            _log = log;
 
             _queueService.CreateExchangeOrQueue(_options);
         }
