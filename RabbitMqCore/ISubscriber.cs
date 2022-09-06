@@ -9,5 +9,7 @@ namespace RabbitMqCore
     {
         void Subscribe(Action<RabbitMessageInbound> action);
         void Unsubscribe();
+        void Resume();
+        void Suspend();
     }
 }

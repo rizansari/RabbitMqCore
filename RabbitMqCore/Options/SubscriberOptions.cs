@@ -52,5 +52,9 @@ namespace RabbitMqCore.Options
         /// 
         /// </summary>
         public IDictionary<string, string> ArgumentsEx { get; set; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool IsSuspended { get; set; }
     }
 }

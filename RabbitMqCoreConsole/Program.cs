@@ -21,6 +21,8 @@ namespace RabbitMqCoreConsole
         private static CancellationToken _token = _source.Token;
 
         private static ISubscriber _subscriber;
+
+        private static Queue<string> _queue;
         
 
         static void Main(string[] args)
@@ -41,7 +43,6 @@ namespace RabbitMqCoreConsole
                         options.Password = "guest";
                         options.ReconnectionAttemptsCount = 5;
                         options.ReconnectionTimeout = 1000;
-
                     })
                     .BuildServiceProvider();
 
@@ -54,6 +55,8 @@ namespace RabbitMqCoreConsole
                 rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
                 rmq.OnReconnected += Rmq_OnReconnected;
 
+                _queue = new Queue<string>();
+
                 var argsEx = new Dictionary<string, string>();
                 argsEx.Add("x-max-length", "int:50");
                 _subscriber = rmq.CreateSubscriber(options =>
@@ -65,17 +68,49 @@ namespace RabbitMqCoreConsole
                 });
                 _subscriber.Subscribe(opt =>
                 {
-                    Console.WriteLine("sub called: {0}", opt.ToString());
+                    _subscriber.Suspend();
+                    //Console.WriteLine("sub called: {0}", opt.ToString());
+                    _queue.Enqueue(opt.Message);
+
+
+                    if (_queue.Count > 10)
+                    {
+                        _subscriber.Suspend();
+                    }
                 });
 
                 Thread thread = new Thread(new ThreadStart(Run));
                 thread.Start();
+
+                Thread thread2 = new Thread(new ThreadStart(RunQueueProcessor));
+                thread2.Start();
 
                 Console.ReadLine();
 
                 _source.Cancel();
 
                 _subscriber.Unsubscribe();
+
+                while (true)
+                {
+                    try
+                    {
+                        string message = _queue.Dequeue();
+                        if (message != null)
+                        {
+                            Console.WriteLine("queued: {0}", message.ToString());
+                        }
+                        else
+                        {
+                            //Console.WriteLine("processed: null");
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        break;
+                    }
+                }
             }
             catch (ReconnectAttemptsExceededException ex)
             {
@@ -84,6 +119,40 @@ namespace RabbitMqCoreConsole
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
+            }
+        }
+
+        private static void RunQueueProcessor()
+        {
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    //Console.WriteLine("queue count: {0}", _queue.Count);
+                    string message = _queue.Dequeue();
+                    if (message != null)
+                    {   
+                        Console.WriteLine("processed: {0}", message.ToString());
+                    }
+                    else
+                    {
+                        //Console.WriteLine("processed: null");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    //Console.WriteLine("processed: ex null");
+                }
+
+                if (_queue.Count < 2)
+                {
+                    _subscriber.Resume();
+                }
+
+
+                Thread.Sleep(3000);
+                
+                //_subscriber.Resume();
             }
         }
 
@@ -112,7 +181,8 @@ namespace RabbitMqCoreConsole
                         Message = JsonConvert.SerializeObject(obj)
                     };
                     pub.SendMessage(message);
-                    Thread.Sleep(2000);
+                    //Console.WriteLine("pub called: {0}", message.Message);
+                    Thread.Sleep(1000);
                 }
                 catch (OutboundMessageFailedException ex)
                 {
@@ -131,6 +201,8 @@ namespace RabbitMqCoreConsole
                 }
             }
 
+            Console.WriteLine("pub count: {0}", count-1);
+
             Console.WriteLine("token cancelled");
         }
 
@@ -144,7 +216,7 @@ namespace RabbitMqCoreConsole
             }
             catch (Exception ex)
             {
-                // nothing
+                Console.WriteLine("Rmq_OnReconnected:Unsubscribe {0}", ex);
             }
 
             var argsEx = new Dictionary<string, string>();

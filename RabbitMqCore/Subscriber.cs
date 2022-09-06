@@ -50,5 +50,21 @@ namespace RabbitMqCore
             _onMessage = action;
             _queueService.Subscribe(_options, opt => _onMessage(opt));
         }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void Resume()
+        {
+            _queueService.Resume(_options);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void Suspend()
+        {
+            _queueService.Suspend(_options);
+        }
     }
 }

@@ -38,7 +38,6 @@ namespace RabbitMqCore
 
         public event Action OnConnectionShutdown;
         public event Action OnReconnected;
-        //public event Action<object> onMessage;
 
         public Dictionary<string, Action<RabbitMessageInbound>> _consumers;
 
@@ -162,20 +161,33 @@ namespace RabbitMqCore
             }
         }
 
-        
-
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Channel_CallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (e != null)
                 _log.LogError(e.Exception, string.Join(Environment.NewLine, e.Detail.Select(x => $"{x.Key} - {x.Value}")));
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Connection_CallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (e != null)
                 _log.LogError(e.Exception, e.Exception.Message);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Connection_ConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
         {
             if (e != null)
@@ -183,7 +195,12 @@ namespace RabbitMqCore
             _connectionBlocked = true;
             Reconnect();
         }
-
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Connection_ConnectionShutdown(object sender, ShutdownEventArgs e)
         {
             if (e != null)
@@ -192,6 +209,9 @@ namespace RabbitMqCore
             Reconnect();
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
         void CheckSendChannelOpened()
         {
             if (_sendChannel is null || _sendChannel.IsClosed)
@@ -507,7 +527,7 @@ namespace RabbitMqCore
             }
             catch (Exception ex)
             {
-                _log.LogError($"_consumer_Received.");
+                _log.LogError(ex, $"_consumer_Received.");
             }
 
             return Task.CompletedTask;
@@ -528,7 +548,53 @@ namespace RabbitMqCore
             }
             catch (Exception ex)
             {
+                _log.LogError(ex, "Unsubscribe");
+            }
+        }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="options"></param>
+        public void Resume(SubscriberOptions options)
+        {
+            if (options == null)
+                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
+
+            try
+            {
+                if (options.IsSuspended)
+                {
+                    options.IsSuspended = false;
+                    _consumeChannel.BasicConsume(options.QueueName, true, options.ConsumerTag, _consumer);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Resume");
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="options"></param>
+        public void Suspend(SubscriberOptions options)
+        {
+            if (options == null)
+                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
+
+            try
+            {
+                if (!options.IsSuspended)
+                {
+                    _consumeChannel.BasicCancel(options.ConsumerTag);
+                    options.IsSuspended = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Suspend");
             }
         }
     }

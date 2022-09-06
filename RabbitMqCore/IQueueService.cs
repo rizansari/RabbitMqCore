@@ -15,14 +15,15 @@ namespace RabbitMqCore
 
         public event Action OnConnectionShutdown;
         public event Action OnReconnected;
-
+        
         IPublisher CreatePublisher(Action<PublisherOptions> options);
         void SendMessage(RabbitMessageOutbound message, PublisherOptions options);
         void CreateExchangeOrQueue(PublisherOptions options);
-
         ISubscriber CreateSubscriber(Action<SubscriberOptions> options);
         void CreateExchangeOrQueue(SubscriberOptions options);
         void Subscribe(SubscriberOptions options, Action<RabbitMessageInbound> onMessage);
         void Unsubscribe(SubscriberOptions options);
+        void Resume(SubscriberOptions options);
+        void Suspend(SubscriberOptions options);
     }
 }
