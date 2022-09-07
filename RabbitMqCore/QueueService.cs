@@ -495,7 +495,7 @@ namespace RabbitMqCore
             if (onMessage == null)
                 throw new ArgumentException($"{nameof(onMessage)} is null.", nameof(onMessage));
 
-            string tag = _consumeChannel.BasicConsume(options.QueueName, true, _consumer);
+            string tag = _consumeChannel.BasicConsume(options.QueueName, options.AutoAck, _consumer);
             options.ConsumerTag = tag;
             _consumers.Add(tag, onMessage);
         }
@@ -566,7 +566,7 @@ namespace RabbitMqCore
                 if (options.IsSuspended)
                 {
                     options.IsSuspended = false;
-                    _consumeChannel.BasicConsume(options.QueueName, true, options.ConsumerTag, _consumer);
+                    _consumeChannel.BasicConsume(options.QueueName, options.AutoAck, options.ConsumerTag, _consumer);
                 }
             }
             catch (Exception ex)
@@ -595,6 +595,26 @@ namespace RabbitMqCore
             catch (Exception ex)
             {
                 _log.LogError(ex, "Suspend");
+            }
+        }
+
+        public void Acknowledge(SubscriberOptions options, ulong deliveryTag)
+        {
+            if (options == null)
+                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
+
+            if (options.AutoAck)
+            {
+                return;
+            }
+
+            try
+            {
+                _consumeChannel.BasicAck(deliveryTag, false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Acknowledge deliverytag:{0}", deliveryTag);
             }
         }
     }

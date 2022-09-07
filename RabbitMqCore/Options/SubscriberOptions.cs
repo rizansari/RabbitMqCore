@@ -56,5 +56,9 @@ namespace RabbitMqCore.Options
         /// 
         /// </summary>
         public bool IsSuspended { get; set; }
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool AutoAck { get; set; } = true;
     }
 }

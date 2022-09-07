@@ -70,5 +70,10 @@ namespace RabbitMqCore
             IsSuspended = true;
             _queueService.Suspend(_options);
         }
+
+        public void Acknowledge(ulong DeliveryTag)
+        {
+            _queueService.Acknowledge(_options, DeliveryTag);
+        }
     }
 }

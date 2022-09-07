@@ -23,9 +23,271 @@ namespace RabbitMqCoreConsole
         private static ISubscriber _subscriber;
 
         private static Queue<string> _queue;
-        
+
 
         static void Main(string[] args)
+        {
+            try
+            {
+                //setup our DI
+                var serviceProvider = new ServiceCollection()
+                    .AddLogging(loggingBuilder =>
+                    {
+                        loggingBuilder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                        loggingBuilder.AddLog4Net();
+                    })
+                    .AddRabbitMQCore(options =>
+                    {
+                        options.HostName = "localhost";
+                        options.UserName = "guest";
+                        options.Password = "guest";
+                        options.ReconnectionAttemptsCount = 5;
+                        options.ReconnectionTimeout = 1000;
+                        options.PrefetchCount = 5;
+                    })
+                    .BuildServiceProvider();
+
+                var logger = serviceProvider.GetService<ILoggerFactory>()
+                    .CreateLogger<Program>();
+
+                // get QueueService
+                rmq = serviceProvider.GetRequiredService<IQueueService>();
+
+                //rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
+                //rmq.OnReconnected += Rmq_OnReconnected;
+
+                if (args[0] == "p")
+                {
+                    Thread thread = new Thread(new ThreadStart(Run));
+                    thread.Start();
+
+                    Console.ReadLine();
+                    
+                    _source.Cancel();
+                }
+
+                if (args[0] == "s")
+                {
+                    _subscriber = rmq.CreateSubscriber(options =>
+                    {
+                        options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                        options.ExchangeName = "exchange.1";
+                        options.QueueName = "queue.1";
+                        options.AutoAck = false;
+                    });
+                    _subscriber.Subscribe(opt =>
+                    {
+                        Console.WriteLine("sub called: {0}", opt.ToString());
+
+                        if (args.Length > 1 && args[1] == "a")
+                        {
+                            Console.WriteLine("acknowledging: {0}", opt.DeliveryTag);
+                            _subscriber.Acknowledge(opt.DeliveryTag);
+                        }
+                        else
+                        {
+                            Console.WriteLine("not acknowledging: {0}", opt.DeliveryTag);
+                        }
+                    });
+
+                    Console.ReadLine();
+
+                    _subscriber.Unsubscribe();
+                }
+            }
+            catch (ReconnectAttemptsExceededException ex)
+            {
+                Console.WriteLine("ReconnectAttemptsExceededException");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+        }
+
+
+        #region auto ack false
+        static void MainAckFalse(string[] args)
+        {
+            try
+            {
+                //setup our DI
+                var serviceProvider = new ServiceCollection()
+                    .AddLogging(loggingBuilder =>
+                    {
+                        loggingBuilder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                        loggingBuilder.AddLog4Net();
+                    })
+                    .AddRabbitMQCore(options =>
+                    {
+                        options.HostName = "localhost";
+                        options.UserName = "guest";
+                        options.Password = "guest";
+                        options.ReconnectionAttemptsCount = 5;
+                        options.ReconnectionTimeout = 1000;
+                        options.PrefetchCount = 5;
+                    })
+                    .BuildServiceProvider();
+
+                var logger = serviceProvider.GetService<ILoggerFactory>()
+                    .CreateLogger<Program>();
+
+                // get QueueService
+                rmq = serviceProvider.GetRequiredService<IQueueService>();
+
+                //rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
+                //rmq.OnReconnected += Rmq_OnReconnected;
+
+                _subscriber = rmq.CreateSubscriber(options =>
+                {
+                    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                    options.ExchangeName = "exchange.1";
+                    options.QueueName = "queue.1";
+                    options.AutoAck = false;
+                });
+                _subscriber.Subscribe(opt =>
+                {
+                    Console.WriteLine("sub called: {0}", opt.ToString());
+                    Console.WriteLine("acknowledging: {0}", opt.DeliveryTag);
+                    _subscriber.Acknowledge(opt.DeliveryTag);
+                });
+
+                var _subscriber2 = rmq.CreateSubscriber(options =>
+                {
+                    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                    options.ExchangeName = "exchange.2";
+                    options.QueueName = "queue.2";
+                    options.AutoAck = false;
+                });
+                _subscriber2.Subscribe(opt =>
+                {
+                    Console.WriteLine("sub called: {0}", opt.ToString());
+                    Console.WriteLine("not acknowledging: {0}", opt.DeliveryTag);
+                    //_subscriber.Acknowledge(opt.DeliveryTag);
+                });
+
+                Thread thread = new Thread(new ThreadStart(Run));
+                thread.Start();
+
+                Thread thread2 = new Thread(new ThreadStart(Run2));
+                thread2.Start();
+
+                Console.ReadLine();
+
+                _source.Cancel();
+
+                _subscriber.Unsubscribe();
+                _subscriber2.Unsubscribe();
+            }
+            catch (ReconnectAttemptsExceededException ex)
+            {
+                Console.WriteLine("ReconnectAttemptsExceededException");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+        }
+
+        private static void Run()
+        {
+            var pub = rmq.CreatePublisher(options =>
+            {
+                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                options.ExchangeName = "exchange.1";
+                options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
+            });
+
+            SimpleObject obj = null;
+            RabbitMessageOutbound message = null;
+
+            int count = 1;
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    obj = new SimpleObject() { ID = count++, Name = "One" };
+                    message = new RabbitMessageOutbound()
+                    {
+                        Message = JsonConvert.SerializeObject(obj)
+                    };
+                    pub.SendMessage(message);
+                    Console.WriteLine("pub called: {0}", message.Message);
+                    Thread.Sleep(2000);
+                }
+                catch (OutboundMessageFailedException ex)
+                {
+                    Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+                    Thread.Sleep(2000);
+                }
+                catch (NotConnectedException ex)
+                {
+                    Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+                    Thread.Sleep(2000);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Message failed {0}", obj.ID);
+                    Thread.Sleep(2000);
+                }
+            }
+
+            Console.WriteLine("pub count: {0}", count - 1);
+
+            Console.WriteLine("token cancelled");
+        }
+
+        private static void Run2()
+        {
+            var pub = rmq.CreatePublisher(options =>
+            {
+                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                options.ExchangeName = "exchange.2";
+                options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
+            });
+
+            SimpleObject obj = null;
+            RabbitMessageOutbound message = null;
+
+            int count = 1;
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    obj = new SimpleObject() { ID = count++, Name = "Two" };
+                    message = new RabbitMessageOutbound()
+                    {
+                        Message = JsonConvert.SerializeObject(obj)
+                    };
+                    pub.SendMessage(message);
+                    Console.WriteLine("pub called: {0}", message.Message);
+                    Thread.Sleep(2000);
+                }
+                catch (OutboundMessageFailedException ex)
+                {
+                    Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+                    Thread.Sleep(2000);
+                }
+                catch (NotConnectedException ex)
+                {
+                    Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+                    Thread.Sleep(2000);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Message failed {0}", obj.ID);
+                    Thread.Sleep(2000);
+                }
+            }
+
+            Console.WriteLine("pub count: {0}", count - 1);
+
+            Console.WriteLine("token cancelled");
+        }
+        #endregion
+
+        #region Queue Limit
+        static void MainWithQueue(string[] args)
         {
             try
             {
@@ -156,55 +418,56 @@ namespace RabbitMqCoreConsole
             }
         }
 
-        private static void Run()
-        {
-            var pub = rmq.CreatePublisher(options =>
-            {
-                options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
-                options.ExchangeName = "exchange.1";
-                options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
-            });
-            var obj = new SimpleObject() { ID = 1, Name = "One" };
-            var message = new RabbitMessageOutbound()
-            {
-                Message = JsonConvert.SerializeObject(obj)
-            };
+        //private static void Run()
+        //{
+        //    var pub = rmq.CreatePublisher(options =>
+        //    {
+        //        options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+        //        options.ExchangeName = "exchange.1";
+        //        options.ExchangeType = RabbitMqCore.Enums.ExchangeType.direct;
+        //    });
+        //    var obj = new SimpleObject() { ID = 1, Name = "One" };
+        //    var message = new RabbitMessageOutbound()
+        //    {
+        //        Message = JsonConvert.SerializeObject(obj)
+        //    };
 
-            int count = 1;
-            while (!_token.IsCancellationRequested)
-            {
-                try
-                {
-                    obj = new SimpleObject() { ID = count++, Name = "One" };
-                    message = new RabbitMessageOutbound()
-                    {
-                        Message = JsonConvert.SerializeObject(obj)
-                    };
-                    pub.SendMessage(message);
-                    //Console.WriteLine("pub called: {0}", message.Message);
-                    Thread.Sleep(1000);
-                }
-                catch (OutboundMessageFailedException ex)
-                {
-                    Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
-                    Thread.Sleep(2000);
-                }
-                catch (NotConnectedException ex)
-                {
-                    Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
-                    Thread.Sleep(2000);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Message failed {0}", obj.ID);
-                    Thread.Sleep(2000);
-                }
-            }
+        //    int count = 1;
+        //    while (!_token.IsCancellationRequested)
+        //    {
+        //        try
+        //        {
+        //            obj = new SimpleObject() { ID = count++, Name = "One" };
+        //            message = new RabbitMessageOutbound()
+        //            {
+        //                Message = JsonConvert.SerializeObject(obj)
+        //            };
+        //            pub.SendMessage(message);
+        //            //Console.WriteLine("pub called: {0}", message.Message);
+        //            Thread.Sleep(1000);
+        //        }
+        //        catch (OutboundMessageFailedException ex)
+        //        {
+        //            Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+        //            Thread.Sleep(2000);
+        //        }
+        //        catch (NotConnectedException ex)
+        //        {
+        //            Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+        //            Thread.Sleep(2000);
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            Console.WriteLine("Message failed {0}", obj.ID);
+        //            Thread.Sleep(2000);
+        //        }
+        //    }
 
-            Console.WriteLine("pub count: {0}", count-1);
+        //    Console.WriteLine("pub count: {0}", count-1);
 
-            Console.WriteLine("token cancelled");
-        }
+        //    Console.WriteLine("token cancelled");
+        //}
+        #endregion
 
         private static void Rmq_OnReconnected()
         {
