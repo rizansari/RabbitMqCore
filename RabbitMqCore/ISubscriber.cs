@@ -7,6 +7,7 @@ namespace RabbitMqCore
 {
     public interface ISubscriber
     {
+        bool IsSuspended { get; set; }
         void Subscribe(Action<RabbitMessageInbound> action);
         void Unsubscribe();
         void Resume();

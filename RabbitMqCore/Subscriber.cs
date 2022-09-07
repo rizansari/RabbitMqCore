@@ -16,6 +16,8 @@ namespace RabbitMqCore
 
         private Action<RabbitMessageInbound> _onMessage;
 
+        public bool IsSuspended { get; set; } = false;
+
         /// <summary>
         /// 
         /// </summary>
@@ -57,6 +59,7 @@ namespace RabbitMqCore
         public void Resume()
         {
             _queueService.Resume(_options);
+            IsSuspended = false;
         }
 
         /// <summary>
@@ -64,6 +67,7 @@ namespace RabbitMqCore
         /// </summary>
         public void Suspend()
         {
+            IsSuspended = true;
             _queueService.Suspend(_options);
         }
     }
