@@ -598,6 +598,11 @@ namespace RabbitMqCore
             }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="options"></param>
+        /// <param name="deliveryTag"></param>
         public void Acknowledge(SubscriberOptions options, ulong deliveryTag)
         {
             if (options == null)
@@ -615,6 +620,31 @@ namespace RabbitMqCore
             catch (Exception ex)
             {
                 _log.LogError(ex, "Acknowledge deliverytag:{0}", deliveryTag);
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="options"></param>
+        /// <param name="deliveryTag"></param>
+        public void NotAcknowledge(SubscriberOptions options, ulong deliveryTag)
+        {
+            if (options == null)
+                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
+
+            if (options.AutoAck)
+            {
+                return;
+            }
+
+            try
+            {
+                _consumeChannel.BasicNack(deliveryTag, false, options.RequeueNack);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "NotAcknowledge deliverytag:{0}", deliveryTag);
             }
         }
     }

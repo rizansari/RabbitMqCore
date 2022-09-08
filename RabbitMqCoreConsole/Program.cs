@@ -77,7 +77,7 @@ namespace RabbitMqCoreConsole
                     });
                     _subscriber.Subscribe(opt =>
                     {
-                        Console.WriteLine("sub called: {0}", opt.ToString());
+                        Console.WriteLine("sub called: {0} redelivered: {1}", opt.ToString(), opt.Redelivered);
 
                         if (args.Length > 1 && args[1] == "a")
                         {
@@ -87,6 +87,7 @@ namespace RabbitMqCoreConsole
                         else
                         {
                             Console.WriteLine("not acknowledging: {0}", opt.DeliveryTag);
+                            _subscriber.NotAcknowledge(opt.DeliveryTag);
                         }
                     });
 

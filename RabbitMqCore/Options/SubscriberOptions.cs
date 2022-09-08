@@ -60,5 +60,9 @@ namespace RabbitMqCore.Options
         /// 
         /// </summary>
         public bool AutoAck { get; set; } = true;
+        /// <summary>
+        /// 
+        /// </summary>
+        public bool RequeueNack { get; set; } = true;
     }
 }

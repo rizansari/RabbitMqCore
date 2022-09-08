@@ -26,5 +26,6 @@ namespace RabbitMqCore
         void Resume(SubscriberOptions options);
         void Suspend(SubscriberOptions options);
         void Acknowledge(SubscriberOptions options, ulong deliveryTag);
+        void NotAcknowledge(SubscriberOptions options, ulong deliveryTag);
     }
 }

@@ -71,9 +71,22 @@ namespace RabbitMqCore
             _queueService.Suspend(_options);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="DeliveryTag"></param>
         public void Acknowledge(ulong DeliveryTag)
         {
             _queueService.Acknowledge(_options, DeliveryTag);
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="DeliveryTag"></param>
+        public void NotAcknowledge(ulong DeliveryTag)
+        {
+            _queueService.NotAcknowledge(_options, DeliveryTag);
         }
     }
 }
