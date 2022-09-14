@@ -10,5 +10,10 @@ namespace RabbitMqCore.Exceptions
         {
 
         }
+
+        public NotConnectedException(string message, Exception inner) : base(message, inner)
+        {
+
+        }
     }
 }

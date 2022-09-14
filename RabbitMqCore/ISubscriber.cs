@@ -5,13 +5,10 @@ using System.Text;
 
 namespace RabbitMqCore
 {
-    public interface ISubscriber
+    public interface ISubscriber : IDisposable
     {
-        bool IsSuspended { get; set; }
         void Subscribe(Action<RabbitMessageInbound> action);
         void Unsubscribe();
-        void Resume();
-        void Suspend();
         void Acknowledge(ulong DeliveryTag);
         void NotAcknowledge(ulong DeliveryTag);
     }

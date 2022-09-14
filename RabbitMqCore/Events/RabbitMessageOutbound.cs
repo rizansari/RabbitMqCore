@@ -10,6 +10,7 @@ namespace RabbitMqCore.Events
         /// 
         /// </summary>
         public string Message { get; set; }
+
         /// <summary>
         /// 
         /// </summary>

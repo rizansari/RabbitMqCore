@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 using RabbitMqCore.Events;
 using RabbitMqCore.Exceptions;
 using RabbitMqCore.Options;
@@ -15,7 +17,33 @@ namespace RabbitMqCore
 {
     public class QueueService : IQueueService
     {
-        readonly ILogger<QueueService> _log;
+        protected readonly ILogger<QueueService> _log;
+
+
+        public RabbitMQCoreOptions Options { get; }
+
+
+        private IConnection _connection;
+        
+        public bool IsConnected 
+        { 
+            get 
+            {
+                if (_connection != null)
+                {
+                    return _connection.IsOpen;
+                }
+                return false;
+            } 
+        }
+
+        IConnection IQueueService.Connection
+        {
+            get { return _connection; }
+        }
+
+        public event Action OnConnectionShutdown;
+        public event Action OnReconnected;
 
         /// <summary>
         /// 
@@ -25,38 +53,89 @@ namespace RabbitMqCore
         public QueueService(RabbitMQCoreOptions Options, ILoggerFactory loggerFactory)
         {
             this.Options = Options;
-            _log = loggerFactory.CreateLogger<QueueService>();
 
-            Reconnect();
+            if (Options.DebugMode)
+            {
+                _log = loggerFactory.CreateLogger<QueueService>();
+            }
+            else
+            {
+                _log = NullLoggerFactory.Instance.CreateLogger<QueueService>();
+            }
+
+            if (Options.ConnectOnConstruction)
+            {
+                Connect();
+            }
         }
 
-        IConnection _connection;
-        IModel _sendChannel;
-        IModel _consumeChannel;
-        AsyncEventingBasicConsumer _consumer;
-        bool _connectionBlocked = false;
-
-        public event Action OnConnectionShutdown;
-        public event Action OnReconnected;
-
-        public Dictionary<string, Action<RabbitMessageInbound>> _consumers;
-
-        public IConnection Connection
+        public void Connect()
         {
-            get { return _connection; }
+            try
+            {
+                if (_connection?.IsOpen == true)
+                {
+                    _log.LogDebug("Connection already open.");
+                    return;
+                }
+
+                // connection
+                _log.LogDebug("Connecting to RabbitMQ endpoint {0}.", Options.HostName);
+                var factory = new ConnectionFactory
+                {
+                    HostName = Options.HostName,
+                    UserName = Options.UserName,
+                    Password = Options.Password,
+                    RequestedHeartbeat = TimeSpan.FromSeconds(Options.RequestedHeartbeat),
+                    RequestedConnectionTimeout = TimeSpan.FromMilliseconds(Options.RequestedConnectionTimeout),
+                    AutomaticRecoveryEnabled = Options.AutomaticRecoveryEnabled,
+                    NetworkRecoveryInterval = Options.NetworkRecoveryInterval,
+                    TopologyRecoveryEnabled = Options.TopologyRecoveryEnabled,
+                    Port = Options.Port,
+                    VirtualHost = Options.VirtualHost,
+                    DispatchConsumersAsync = Options.DispatchConsumersAsync, //todo: can only be used with IAsyncBasicConsumer
+                    ClientProvidedName = Options.ClientProvidedName
+                };
+                _connection = factory.CreateConnection();
+
+                // connection events
+                _connection.ConnectionShutdown += Connection_ConnectionShutdown;
+                _connection.ConnectionBlocked += Connection_ConnectionBlocked;
+                _connection.CallbackException += Connection_CallbackException;
+                _connection.ConnectionUnblocked += Connection_ConnectionUnblocked;
+
+
+                _log.LogDebug("Connected to RabbitMQ endpoint {0}", Options.HostName);
+            }
+            catch (BrokerUnreachableException ex)
+            {
+                _log.LogDebug(ex, "Error in Connect.");
+
+                if (Options.ThrowIfNotConnected)
+                {
+                    throw new NotConnectedException("", ex);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Error in Connect.");
+                throw ex;
+            }
         }
 
-        public IModel SendChannel
+        
+
+        public void Dispose()
         {
-            get { return _sendChannel; }
+            Cleanup();
         }
 
-        public RabbitMQCoreOptions Options { get; }
+        
 
         /// <summary>
         /// 
         /// </summary>
-        public void Cleanup()
+        private void Cleanup()
         {
             _log.LogDebug("Cleaning up old connection and channels.");
             try
@@ -66,110 +145,19 @@ namespace RabbitMqCore
                     _connection.ConnectionShutdown -= Connection_ConnectionShutdown;
                     _connection.CallbackException -= Connection_CallbackException;
                     _connection.ConnectionBlocked -= Connection_ConnectionBlocked;
-                }
-
-                // Closing send channel.
-                if (_sendChannel != null)
-                {
-                    _sendChannel.CallbackException -= Channel_CallbackException;
-                }
-
-                // Closing consume channel.
-                if (_consumeChannel != null)
-                {
-                    _consumeChannel.CallbackException -= Channel_CallbackException;
-                }
-
-                if (_consumer != null)
-                {
-                    _consumer.Received -= _consumer_Received;
+                    _connection.ConnectionUnblocked -= Connection_ConnectionUnblocked;
                 }
 
                 OnConnectionShutdown?.Invoke();
+                
                 // Closing connection.
                 if (_connection?.IsOpen == true)
                     _connection.Close(TimeSpan.FromSeconds(5));
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Error closing connection.");
+                _log.LogDebug(ex, "Error closing connection.");
             }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        public void Connect()
-        {
-            try
-            {
-                if (_connection?.IsOpen == true)
-                {
-                    _log.LogWarning("Connection already open.");
-                    return;
-                }
-
-                // connection
-                _log.LogInformation("Connecting to RabbitMQ endpoint {0}.", Options.HostName);
-                var factory = new ConnectionFactory
-                {
-                    HostName = Options.HostName,
-                    UserName = Options.UserName,
-                    Password = Options.Password,
-                    RequestedHeartbeat = TimeSpan.FromSeconds(Options.RequestedHeartbeat),
-                    RequestedConnectionTimeout = TimeSpan.FromMilliseconds(Options.RequestedConnectionTimeout),
-                    AutomaticRecoveryEnabled = false,
-                    TopologyRecoveryEnabled = false,
-                    Port = Options.Port,
-                    VirtualHost = Options.VirtualHost,
-                    DispatchConsumersAsync = true
-                };
-                _connection = factory.CreateConnection();
-
-                // connection events
-                _connection.ConnectionShutdown += Connection_ConnectionShutdown;
-                _connection.ConnectionBlocked += Connection_ConnectionBlocked;
-                _connection.CallbackException += Connection_CallbackException;
-
-                _log.LogDebug("Connection opened.");
-
-                // send channel
-                _sendChannel = Connection.CreateModel();
-                _sendChannel.CallbackException += Channel_CallbackException;
-                _sendChannel.BasicQos(0, Options.PrefetchCount, false);
-
-                // consume channel
-                _consumeChannel = Connection.CreateModel();
-                _consumeChannel.CallbackException += Channel_CallbackException;
-                _consumeChannel.BasicQos(0, Options.PrefetchCount, false);
-
-                _consumer = new AsyncEventingBasicConsumer(_consumeChannel);
-                _consumer.Received += _consumer_Received;
-
-                _consumers = new Dictionary<string, Action<RabbitMessageInbound>>();
-
-                _connectionBlocked = false;
-
-                CheckSendChannelOpened();
-
-                _log.LogInformation("Connected to RabbitMQ endpoint {0}", Options.HostName);
-            }
-            catch (Exception ex)
-            {
-                //_log.LogError(ex, "Error in Connect.");
-                throw ex;
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void Channel_CallbackException(object sender, CallbackExceptionEventArgs e)
-        {
-            if (e != null)
-                _log.LogError(e.Exception, string.Join(Environment.NewLine, e.Detail.Select(x => $"{x.Key} - {x.Value}")));
         }
 
         /// <summary>
@@ -180,7 +168,7 @@ namespace RabbitMqCore
         private void Connection_CallbackException(object sender, CallbackExceptionEventArgs e)
         {
             if (e != null)
-                _log.LogError(e.Exception, e.Exception.Message);
+                _log.LogDebug(e.Exception, e.Exception.Message);
         }
 
         /// <summary>
@@ -191,11 +179,9 @@ namespace RabbitMqCore
         private void Connection_ConnectionBlocked(object sender, ConnectionBlockedEventArgs e)
         {
             if (e != null)
-                _log.LogError($"Connection blocked! Reason: {0}", e.Reason);
-            _connectionBlocked = true;
-            Reconnect();
+                _log.LogDebug($"Connection blocked! Reason [{e.Reason}]");
         }
-        
+
         /// <summary>
         /// 
         /// </summary>
@@ -204,112 +190,21 @@ namespace RabbitMqCore
         private void Connection_ConnectionShutdown(object sender, ShutdownEventArgs e)
         {
             if (e != null)
-                _log.LogError($"Connection broke! Reason: {0}", e.ReplyText);
-            _connectionBlocked = true;
-            Reconnect();
+                _log.LogDebug($"Connection broke! Reason [{e.ReplyText}] | Initiator [{e.Initiator}]");
         }
 
         /// <summary>
         /// 
         /// </summary>
-        void CheckSendChannelOpened()
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Connection_ConnectionUnblocked(object sender, EventArgs e)
         {
-            if (_sendChannel is null || _sendChannel.IsClosed)
-                throw new NotConnectedException("Channel not opened.");
-
-            if (_connectionBlocked)
-                throw new NotConnectedException("Connection is blocked.");
+            if (e != null)
+                _log.LogDebug($"Connection unblocked!");
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        void Reconnect()
-        {
-            try
-            {
-                _log.LogDebug("Reconnect requested");
-                Cleanup();
-
-                int _reconnectAttemptsCount = 0;
-
-                var mres = new ManualResetEventSlim(false); // state is initially false
-
-                while (!mres.Wait(Options.ReconnectionTimeout)) // loop until state is true, checking every Options.ReconnectionTimeout
-                {
-                    if (_reconnectAttemptsCount > Options.ReconnectionAttemptsCount)
-                        throw new ReconnectAttemptsExceededException($"Max reconnect attempts {Options.ReconnectionAttemptsCount} reached.");
-
-                    try
-                    {
-                        _log.LogDebug("Trying to connect with reconnect attempt {0}", _reconnectAttemptsCount);
-                        Connect();
-                        _reconnectAttemptsCount = 0;
-                        OnReconnected?.Invoke();
-                        break;
-                        //mres.Set(); // state set to true - breaks out of loop
-                    }
-                    catch (Exception e)
-                    {
-                        _log.LogCritical(e, $"Connection failed. Detais: {e.Message}. Reconnect attempts: {_reconnectAttemptsCount}");
-                        _reconnectAttemptsCount++;
-                        Thread.Sleep(Options.ReconnectionTimeout);
-                    }
-                }
-            }
-            catch (ReconnectAttemptsExceededException ex)
-            {
-                _log.LogCritical(ex, $"ReconnectAttemptsExceededException Connection failed. Detais: {ex.Message}.");
-                throw ex;
-            }
-            catch (Exception ex)
-            {
-                _log.LogCritical(ex, $"Connection failed. Detais: {ex.Message}.");
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        public void Dispose()
-        {
-            Cleanup();
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="payload"></param>
-        /// <param name="options"></param>
-        public void SendMessage(RabbitMessageOutbound message, PublisherOptions options)
-        {
-            try
-            {
-                IBasicProperties props = null;
-                if (!string.IsNullOrEmpty(message.CorrelationId))
-                {
-                    props = _sendChannel.CreateBasicProperties();
-                    props.CorrelationId = message.CorrelationId;
-                }
-
-                CheckSendChannelOpened();
-
-                if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
-                {
-                    _sendChannel.BasicPublish(options.ExchangeName, options.RoutingKeys.Count > 0 ? options.RoutingKeys.First() : "", props, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(message.Message)));
-                }
-                else if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Queue)
-                {
-                    _sendChannel.BasicPublish("", options.QueueName, props, new ReadOnlyMemory<byte>(Encoding.UTF8.GetBytes(message.Message)));
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, $"Send message failed. {options.ExchangeName}/{options.QueueName}");
-                throw new OutboundMessageFailedException("Send message failed", message, ex);
-            }
-        }
-
+        #region Publisher
         /// <summary>
         /// 
         /// </summary>
@@ -317,335 +212,51 @@ namespace RabbitMqCore
         /// <returns></returns>
         public IPublisher CreatePublisher(Action<PublisherOptions> options)
         {
-
             try
             {
                 var temp = new PublisherOptions();
                 options(temp);
-                return new Publisher(this, temp, _log);
+                var publisher = new Publisher(this, temp, _log);
+                publisher.Initialize();
+                return publisher;
+            }
+            catch (OperationInterruptedException ex)
+            {
+                _log.LogDebug(ex, "Create publisher failed.");
+                throw ex;
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Create publisher failed.");
+                _log.LogDebug(ex, "Create publisher failed.");
                 throw ex;
             }
         }
+        #endregion
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        public void CreateExchangeOrQueue(PublisherOptions options)
-        {
-            try
-            {
-                if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
-                {
-                    _sendChannel.ExchangeDeclare(
-                        exchange: options.ExchangeName,
-                        type: options.ExchangeType.ToString(),
-                        durable: options.Durable,
-                        autoDelete: options.AutoDelete,
-                        arguments: options.Arguments
-                        );
-                }
-                else if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Queue)
-                {
-                    _sendChannel.QueueDeclare(
-                        queue: options.QueueName,
-                        durable: options.Durable,
-                        exclusive: options.Exclusive,
-                        autoDelete: options.AutoDelete,
-                        arguments: options.Arguments
-                        );
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, $"Create Exchange or Queue failed. {options.ExchangeName}/{options.QueueName}");
-                throw ex;
-            }
-        }
 
+        #region Subscriber
         public ISubscriber CreateSubscriber(Action<SubscriberOptions> options)
         {
             try
             {
                 var temp = new SubscriberOptions();
                 options(temp);
-
-                if (temp.ArgumentsEx != null &&  temp.ArgumentsEx.Count > 0)
-                {
-                    foreach (var arg in temp.ArgumentsEx)
-                    {
-                        if (arg.Value.Contains(":"))
-                        {
-                            var splits = arg.Value.Split(':');
-                            if (splits[0] == "int")
-                            {
-                                temp.Arguments.Add(arg.Key, Convert.ToInt32(splits[1]));
-                            }
-                            else if (splits[0] == "string")
-                            {
-                                temp.Arguments.Add(arg.Key, splits[1]);
-                            }
-                            else
-                            {
-                                temp.Arguments.Add(arg.Key, splits[1]);
-                            }
-                        }
-                        else
-                        {
-                            temp.Arguments.Add(arg.Key, arg.Value);
-                        }
-                    }
-                }
-                return new Subscriber(this, temp, _log);
+                var subscriber = new Subscriber(this, temp, _log);
+                subscriber.Initialize();
+                return subscriber;
+            }
+            catch (OperationInterruptedException ex)
+            {
+                _log.LogDebug(ex, "Create subscriber failed.");
+                throw ex;
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Create subscriber failed.");
+                _log.LogDebug(ex, "Create subscriber failed.");
                 throw ex;
             }
         }
+        #endregion
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        public void CreateExchangeOrQueue(SubscriberOptions options)
-        {
-            try
-            {
-                if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
-                {
-                    _sendChannel.ExchangeDeclare(
-                        exchange: options.ExchangeName,
-                        type: options.ExchangeType.ToString(),
-                        durable: options.Durable,
-                        autoDelete: options.AutoDelete,
-                        arguments: options.Arguments
-                        );
-
-                    // if queue name mentioned
-                    if (!string.IsNullOrEmpty(options.QueueName))
-                    {
-                        _sendChannel.QueueDeclare(
-                            queue: options.QueueName,
-                            durable: options.Durable,
-                            exclusive: options.Exclusive,
-                            autoDelete: options.AutoDelete,
-                            arguments: options.Arguments
-                        );
-
-                        _sendChannel.QueueBind(
-                            queue: options.QueueName,
-                            exchange: options.ExchangeName,
-                            routingKey: options.RoutingKeys.Count > 0 ? options.RoutingKeys.First() : "",
-                            arguments: options.Arguments
-                        );
-                    }
-                    // if no queue name then create temp queue and bind
-                    else
-                    {
-                        var result = _sendChannel.QueueDeclare(
-                            durable: options.Durable,
-                            exclusive: true,
-                            autoDelete: true,
-                            arguments: options.Arguments
-                        );
-
-                        _sendChannel.QueueBind(
-                            queue: result.QueueName,
-                            exchange: options.ExchangeName,
-                            routingKey: options.RoutingKeys.Count > 0 ? options.RoutingKeys.First() : "",
-                            arguments: options.Arguments
-                        );
-
-                        options.QueueName = result.QueueName;
-                    }
-                }
-                else if (options.ExchangeOrQueue == Enums.ExchangeOrQueue.Queue)
-                {
-                    _sendChannel.QueueDeclare(
-                        queue: options.QueueName,
-                        durable: options.Durable,
-                        exclusive: options.Exclusive,
-                        autoDelete: options.AutoDelete,
-                        arguments: options.Arguments
-                        );
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, $"Create Exchange or Queue failed. {options.ExchangeName}/{options.QueueName}");
-                throw ex;
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="onMessage"></param>
-        public void Subscribe(SubscriberOptions options, Action<RabbitMessageInbound> onMessage)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            if (onMessage == null)
-                throw new ArgumentException($"{nameof(onMessage)} is null.", nameof(onMessage));
-
-            string tag = _consumeChannel.BasicConsume(options.QueueName, options.AutoAck, _consumer);
-            options.ConsumerTag = tag;
-            _consumers.Add(tag, onMessage);
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="event"></param>
-        /// <returns></returns>
-        private Task _consumer_Received(object sender, BasicDeliverEventArgs @event)
-        {
-            try
-            {
-                var onMessage = _consumers[@event.ConsumerTag];
-
-                var message = new RabbitMessageInbound();
-                message.Message = Encoding.UTF8.GetString(@event.Body.ToArray());
-                message.ConsumerTag = @event.ConsumerTag;
-                message.DeliveryTag = @event.DeliveryTag;
-                message.Exchange = @event.Exchange;
-                message.Redelivered = @event.Redelivered;
-                message.RoutingKey = @event.RoutingKey;
-                //message.Bytes = @event.Body.ToArray();
-                //message.BasicProperties = @event.BasicProperties;
-                message.CorrelationId = @event.BasicProperties.CorrelationId;
-
-                onMessage.Invoke(message);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, $"_consumer_Received.");
-            }
-
-            return Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        public void Unsubscribe(SubscriberOptions options)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            try
-            {
-                _consumeChannel.BasicCancel(options.ConsumerTag);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Unsubscribe");
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        public void Resume(SubscriberOptions options)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            try
-            {
-                if (options.IsSuspended)
-                {
-                    options.IsSuspended = false;
-                    _consumeChannel.BasicConsume(options.QueueName, options.AutoAck, options.ConsumerTag, _consumer);
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Resume");
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        public void Suspend(SubscriberOptions options)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            try
-            {
-                if (!options.IsSuspended)
-                {
-                    _consumeChannel.BasicCancel(options.ConsumerTag);
-                    options.IsSuspended = true;
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Suspend");
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        /// <param name="deliveryTag"></param>
-        public void Acknowledge(SubscriberOptions options, ulong deliveryTag)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            if (options.AutoAck)
-            {
-                return;
-            }
-
-            try
-            {
-                _consumeChannel.BasicAck(deliveryTag, false);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Acknowledge deliverytag:{0}", deliveryTag);
-            }
-        }
-
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="options"></param>
-        /// <param name="deliveryTag"></param>
-        public void NotAcknowledge(SubscriberOptions options, ulong deliveryTag)
-        {
-            if (options == null)
-                throw new ArgumentException($"{nameof(options)} is null.", nameof(options));
-
-            if (options.AutoAck)
-            {
-                return;
-            }
-
-            try
-            {
-                _consumeChannel.BasicNack(deliveryTag, false, options.RequeueNack);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "NotAcknowledge deliverytag:{0}", deliveryTag);
-            }
-        }
     }
 }

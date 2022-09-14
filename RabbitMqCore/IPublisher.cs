@@ -5,8 +5,11 @@ using System.Text;
 
 namespace RabbitMqCore
 {
-    public interface IPublisher
+    public interface IPublisher : IDisposable
     {
+        event EventHandler<PublisherMessageReturnEventArgs> OnMessageReturn;
+        event EventHandler<PublisherMessageReturnEventArgs> OnMessageFailed;
+
         void SendMessage(RabbitMessageOutbound @object);
     }
 }
