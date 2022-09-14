@@ -9,14 +9,14 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>http://rizwanansari.net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/rizansari/RabbitMqCore</RepositoryUrl>
-    <PackageReleaseNotes>Revamped to use official library's recovery</PackageReleaseNotes>
+    <PackageReleaseNotes>bug fixes</PackageReleaseNotes>
     <PackageTags>RabbitMQ, .NET Core, Dependency Injection, RabbitMQ Client</PackageTags>
     <PackageId>RabbitMQ.NET</PackageId>
     <Product>RabbitMQ.NET</Product>
-    <Version>3.0.0</Version>
+    <Version>3.0.1</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <AssemblyVersion>3.0.0.0</AssemblyVersion>
-    <FileVersion>3.0.0.0</FileVersion>
+    <AssemblyVersion>3.0.1.0</AssemblyVersion>
+    <FileVersion>3.0.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netcoreapp3.1'">

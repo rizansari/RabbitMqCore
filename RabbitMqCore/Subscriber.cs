@@ -293,22 +293,22 @@ namespace RabbitMqCore
         {
             IDictionary<string, object> args = new Dictionary<string, object>();
 
-            if (_options.MessageTTL >= 0)
+            if (_options.MessageTTL > 0)
             {
                 args.Add(ArgumentStrings.MessageTTL, _options.MessageTTL);
             }
 
-            if (_options.AutoExpires >= 0)
+            if (_options.AutoExpires > 0)
             {
                 args.Add(ArgumentStrings.AutoExpires, _options.AutoExpires);
             }
 
-            if (_options.MaxLength >= 0)
+            if (_options.MaxLength > 0)
             {
                 args.Add(ArgumentStrings.MaxLength, _options.MaxLength);
             }
 
-            if (_options.MaxLengthBytes >= 0)
+            if (_options.MaxLengthBytes > 0)
             {
                 args.Add(ArgumentStrings.MaxLengthBytes, _options.MaxLengthBytes);
             }

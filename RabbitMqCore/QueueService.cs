@@ -43,7 +43,6 @@ namespace RabbitMqCore
         }
 
         public event Action OnConnectionShutdown;
-        public event Action OnReconnected;
 
         /// <summary>
         /// 

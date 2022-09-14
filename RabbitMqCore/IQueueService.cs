@@ -14,7 +14,6 @@ namespace RabbitMqCore
         RabbitMQCoreOptions Options { get; }
 
         public event Action OnConnectionShutdown;
-        public event Action OnReconnected;
 
         bool IsConnected { get; }
 

@@ -1,8 +1,8 @@
 # RabbitMQ Client library for .NET Core
 
-Library Version: v3.0.0
+Library Version: v3.0.1
 
-Breaking changes in v3.0.0
+Breaking changes in version 3
 
 If you want to use version 2 then Install 
 ```powershell

@@ -13,15 +13,6 @@ namespace RabbitMqCore.Options
         public int Port { get; set; } = 5672;
         public int RequestedConnectionTimeout { get; set; } = 30000;
         public ushort RequestedHeartbeat { get; set; } = 60;
-        public ushort PrefetchCount { get; set; } = 1;
-        /// <summary>
-        /// Not being used
-        /// </summary>
-        public int ReconnectionTimeout { get; set; } = 3000;
-        /// <summary>
-        /// Not being used
-        /// </summary>
-        public int ReconnectionAttemptsCount { get; set; } = 20;
         public bool AutomaticRecoveryEnabled { get; set; } = false;
         public bool TopologyRecoveryEnabled { get; set; } = false;
         public bool DispatchConsumersAsync { get; set; } = true;
