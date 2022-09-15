@@ -136,6 +136,7 @@ namespace RabbitMqCore
                 {
                     _ids.Enqueue(@object.CorrelationId, Delay);
                 }
+                @object.Expiration = Delay.ToString();
                 _publisher.SendMessage(@object);
             }
             catch (Exception ex)

@@ -1,6 +1,6 @@
 # RabbitMQ Client library for .NET Core
 
-Library Version: v3.0.1
+Library Version: v3.1.1
 
 Breaking changes in version 3
 

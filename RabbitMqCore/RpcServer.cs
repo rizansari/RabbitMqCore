@@ -77,6 +77,7 @@ namespace RabbitMqCore
 
         public void Respond(RabbitMessageOutbound @object)
         {
+            @object.Expiration = "5000"; // todo: from config
             _publisher.SendMessage(@object);
         }
     }

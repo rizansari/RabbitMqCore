@@ -15,7 +15,10 @@ namespace RabbitMqCore.Events
         /// 
         /// </summary>
         public string CorrelationId { get; set; }
-
+        /// <summary>
+        /// 
+        /// </summary>
+        public string Expiration { get; internal set; }
 
         public override string ToString()
         {

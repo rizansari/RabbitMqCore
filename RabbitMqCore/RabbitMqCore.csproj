@@ -9,14 +9,14 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>http://rizwanansari.net</PackageProjectUrl>
     <RepositoryUrl>https://github.com/rizansari/RabbitMqCore</RepositoryUrl>
-    <PackageReleaseNotes>Simple RPC Server and Client added</PackageReleaseNotes>
+    <PackageReleaseNotes>Simple RPC Server and Client message expiry added</PackageReleaseNotes>
     <PackageTags>RabbitMQ, .NET Core, Dependency Injection, RabbitMQ Client</PackageTags>
     <PackageId>RabbitMQ.NET</PackageId>
     <Product>RabbitMQ.NET</Product>
-    <Version>3.1.0</Version>
+    <Version>3.1.1</Version>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <AssemblyVersion>3.1.0.0</AssemblyVersion>
-    <FileVersion>3.1.0.0</FileVersion>
+    <AssemblyVersion>3.1.1.0</AssemblyVersion>
+    <FileVersion>3.1.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netcoreapp3.1'">

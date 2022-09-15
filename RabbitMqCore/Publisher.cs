@@ -241,10 +241,15 @@ namespace RabbitMqCore
             try
             {
                 IBasicProperties props = null;
+                props = _channel.CreateBasicProperties();
                 if (!string.IsNullOrEmpty(message.CorrelationId))
                 {
-                    props = _channel.CreateBasicProperties();
                     props.CorrelationId = message.CorrelationId;
+                }
+
+                if (!string.IsNullOrEmpty(message.Expiration))
+                {
+                    props.Expiration = message.Expiration;
                 }
 
                 if (_options.ExchangeOrQueue == Enums.ExchangeOrQueue.Exchange)
