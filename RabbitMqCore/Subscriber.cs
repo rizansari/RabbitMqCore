@@ -118,7 +118,7 @@ namespace RabbitMqCore
                 //message.Bytes = @event.Body.ToArray();
                 //message.BasicProperties = @event.BasicProperties;
                 message.CorrelationId = @event.BasicProperties.CorrelationId;
-
+                
                 _onMessage?.Invoke(message);
             }
             catch (Exception ex)

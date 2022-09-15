@@ -7,6 +7,7 @@ namespace RabbitMqCore.Options
     public class RabbitMQCoreOptions
     {
         public string HostName { get; set; } = "127.0.0.1";
+        public List<string> HostNames { get; set; }
         public string UserName { get; set; } = "guest";
         public string Password { get; set; } = "guest";
         public string VirtualHost { get; set; } = "/";

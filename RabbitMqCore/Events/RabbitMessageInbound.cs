@@ -36,6 +36,7 @@ namespace RabbitMqCore.Events
         /// </summary>
         public string CorrelationId { get; internal set; }
         
+
         //public IBasicProperties BasicProperties { get; internal set; }
         //public byte[] Bytes { get; internal set; }
 

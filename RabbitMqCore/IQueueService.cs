@@ -20,5 +20,7 @@ namespace RabbitMqCore
         void Connect();
         IPublisher CreatePublisher(Action<PublisherOptions> options);
         ISubscriber CreateSubscriber(Action<SubscriberOptions> options);
+        IRpcClient CreateRpcClient(Action<RpcOptions> options);
+        IRpcServer CreateRpcServer(Action<RpcOptions> options);
     }
 }

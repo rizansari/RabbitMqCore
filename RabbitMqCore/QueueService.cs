@@ -121,15 +121,11 @@ namespace RabbitMqCore
                 throw ex;
             }
         }
-
         
-
         public void Dispose()
         {
             Cleanup();
         }
-
-        
 
         /// <summary>
         /// 
@@ -232,7 +228,6 @@ namespace RabbitMqCore
         }
         #endregion
 
-
         #region Subscriber
         public ISubscriber CreateSubscriber(Action<SubscriberOptions> options)
         {
@@ -257,5 +252,50 @@ namespace RabbitMqCore
         }
         #endregion
 
+        #region Rpc
+        public IRpcClient CreateRpcClient(Action<RpcOptions> options)
+        {
+            try
+            {
+                var temp = new RpcOptions();
+                options(temp);
+                var rpcClient = new RpcClient(this, temp, _log);
+                rpcClient.Initialize();
+                return rpcClient;
+            }
+            catch (OperationInterruptedException ex)
+            {
+                _log.LogDebug(ex, "Create rpc client failed.");
+                throw ex;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Create rpc client failed.");
+                throw ex;
+            }
+        }
+
+        public IRpcServer CreateRpcServer(Action<RpcOptions> options)
+        {
+            try
+            {
+                var temp = new RpcOptions();
+                options(temp);
+                var rpcServer = new RpcServer(this, temp, _log);
+                rpcServer.Initialize();
+                return rpcServer;
+            }
+            catch (OperationInterruptedException ex)
+            {
+                _log.LogDebug(ex, "Create rpc server failed.");
+                throw ex;
+            }
+            catch (Exception ex)
+            {
+                _log.LogDebug(ex, "Create rpc server failed.");
+                throw ex;
+            }
+        }
+        #endregion
     }
 }

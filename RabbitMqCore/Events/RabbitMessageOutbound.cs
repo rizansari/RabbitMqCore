@@ -16,6 +16,7 @@ namespace RabbitMqCore.Events
         /// </summary>
         public string CorrelationId { get; set; }
 
+
         public override string ToString()
         {
             return Message;

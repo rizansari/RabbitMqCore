@@ -24,6 +24,7 @@ namespace RabbitMqCoreConsole
 
         private static Queue<string> _queue;
 
+        #region rpc
         static void Main(string[] args)
         {
             try
@@ -40,9 +41,6 @@ namespace RabbitMqCoreConsole
                         options.HostName = "localhost";
                         options.UserName = "client";
                         options.Password = "client";
-                        options.ReconnectionAttemptsCount = 5;
-                        options.ReconnectionTimeout = 1000;
-                        options.PrefetchCount = 5;
                         options.AutomaticRecoveryEnabled = true;
                         options.TopologyRecoveryEnabled = true;
                         options.NetworkRecoveryInterval = TimeSpan.FromSeconds(5);
@@ -58,7 +56,126 @@ namespace RabbitMqCoreConsole
                 rmq = serviceProvider.GetRequiredService<IQueueService>();
 
                 rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
-                rmq.OnReconnected += Rmq_OnReconnected;
+
+                Thread thread = new Thread(new ThreadStart(RunRpcClient));
+                thread.Start();
+
+                var rpcServer = rmq.CreateRpcServer(options =>
+                {
+                    options.RpcName = "TEST_RPC";
+                });
+
+                rpcServer.Subscribe(request =>
+                {
+                    var obj = JsonConvert.DeserializeObject<SimpleObject>(request.Message);
+                    obj.Name = "Response";
+                    rpcServer.Respond(new RabbitMessageOutbound() { CorrelationId = request.CorrelationId, Message = JsonConvert.SerializeObject(obj) });
+                    Console.WriteLine("message:{0}", request.Message);
+                });
+
+                Console.ReadLine();
+
+                rpcServer.Dispose();
+
+                _source.Cancel();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+        }
+
+        private static void RunRpcClient()
+        {
+            try
+            {
+                var rpcClient = rmq.CreateRpcClient(options =>
+                {
+                    options.RpcName = "TEST_RPC";
+                });
+
+                SimpleObject obj = null;
+                RabbitMessageOutbound message = null;
+
+                int count = 1;
+                while (!_token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        obj = new SimpleObject() { ID = count++, Name = "Request" };
+                        message = new RabbitMessageOutbound()
+                        {
+                            CorrelationId = $"CorrelationId:{obj.ID}",
+                            Message = JsonConvert.SerializeObject(obj)
+                        };
+                        rpcClient.Call(message, response => {
+                            Console.WriteLine("rpc response: {0}", response.Message);
+                        }, 10000);
+                        Console.WriteLine("rpc request: {0}", message.Message);
+                        Thread.Sleep(2000);
+                    }
+                    catch (OutboundMessageFailedException ex)
+                    {
+                        Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+                        Thread.Sleep(2000);
+                    }
+                    catch (NotConnectedException ex)
+                    {
+                        Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+                        Thread.Sleep(2000);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Message failed {0}", obj.ID);
+                        Thread.Sleep(2000);
+                    }
+                }
+
+                rpcClient.Dispose();
+
+                Console.WriteLine("rpc count: {0}", count - 1);
+
+                Console.WriteLine("token cancelled");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("create rpc client failed");
+            }
+        }
+        #endregion
+
+        #region revamped library
+        static void MainRevamped(string[] args)
+        {
+            try
+            {
+                //setup our DI
+                var serviceProvider = new ServiceCollection()
+                    .AddLogging(loggingBuilder =>
+                    {
+                        loggingBuilder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                        loggingBuilder.AddLog4Net();
+                    })
+                    .AddRabbitMQCore(options =>
+                    {
+                        options.HostName = "localhost";
+                        options.UserName = "client";
+                        options.Password = "client";
+                        options.AutomaticRecoveryEnabled = true;
+                        options.TopologyRecoveryEnabled = true;
+                        options.NetworkRecoveryInterval = TimeSpan.FromSeconds(5);
+                        options.DebugMode = true;
+                        options.ClientProvidedName = "rabbitmq-console";
+                    })
+                    .BuildServiceProvider();
+
+                var logger = serviceProvider.GetService<ILoggerFactory>()
+                    .CreateLogger<Program>();
+
+                // get QueueService
+                rmq = serviceProvider.GetRequiredService<IQueueService>();
+
+                rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
 
                 Thread thread = new Thread(new ThreadStart(Run));
                 thread.Start();
@@ -185,6 +302,7 @@ namespace RabbitMqCoreConsole
         {
             Console.WriteLine("Failed: reason:[{0}] message:[{1}]", e.Reason, e.Message.Message);
         }
+        #endregion
 
         #region with args s and p
         static void MainWIthArgs(string[] args)
@@ -203,9 +321,9 @@ namespace RabbitMqCoreConsole
                         options.HostName = "localhost";
                         options.UserName = "guest";
                         options.Password = "guest";
-                        options.ReconnectionAttemptsCount = 5;
-                        options.ReconnectionTimeout = 1000;
-                        options.PrefetchCount = 5;
+                        //options.ReconnectionAttemptsCount = 5;
+                        //options.ReconnectionTimeout = 1000;
+                        //options.PrefetchCount = 5;
                     })
                     .BuildServiceProvider();
 
@@ -286,9 +404,9 @@ namespace RabbitMqCoreConsole
                         options.HostName = "localhost";
                         options.UserName = "guest";
                         options.Password = "guest";
-                        options.ReconnectionAttemptsCount = 5;
-                        options.ReconnectionTimeout = 1000;
-                        options.PrefetchCount = 5;
+                        //options.ReconnectionAttemptsCount = 5;
+                        //options.ReconnectionTimeout = 1000;
+                        //options.PrefetchCount = 5;
                     })
                     .BuildServiceProvider();
 
@@ -420,8 +538,8 @@ namespace RabbitMqCoreConsole
                         options.HostName = "localhost";
                         options.UserName = "guest";
                         options.Password = "guest";
-                        options.ReconnectionAttemptsCount = 5;
-                        options.ReconnectionTimeout = 1000;
+                        //options.ReconnectionAttemptsCount = 5;
+                        //options.ReconnectionTimeout = 1000;
                     })
                     .BuildServiceProvider();
 
@@ -432,7 +550,7 @@ namespace RabbitMqCoreConsole
                 rmq = serviceProvider.GetRequiredService<IQueueService>();
 
                 rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
-                rmq.OnReconnected += Rmq_OnReconnected;
+                //rmq.OnReconnected += Rmq_OnReconnected;
 
                 _queue = new Queue<string>();
 
@@ -602,8 +720,8 @@ namespace RabbitMqCoreConsole
                     options.HostName = "localhost";
                     options.UserName = "guest";
                     options.Password = "guest";
-                    options.ReconnectionAttemptsCount = 2;
-                    options.ReconnectionTimeout = 1000;
+                    //options.ReconnectionAttemptsCount = 2;
+                    //options.ReconnectionTimeout = 1000;
 
                 })
                 .BuildServiceProvider();
@@ -615,7 +733,7 @@ namespace RabbitMqCoreConsole
             rmq = serviceProvider.GetRequiredService<IQueueService>();
 
             rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
-            rmq.OnReconnected += Rmq_OnReconnected;
+            //rmq.OnReconnected += Rmq_OnReconnected;
 
             // publisher examples
 

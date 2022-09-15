@@ -16,5 +16,8 @@ namespace RabbitMqCore.Common
         public const string OverflowBehaviorRejectPublish = "reject-publish";
         public const string DeadLetterExchange = "x-dead-letter-exchange";
         public const string DeadLetterRoutingKey = "x-dead-letter-routing-key";
+
+        public const string RpcQueueNameRequest = "RPC.{0}.REQUEST";
+        public const string RpcQueueNameResponse = "RPC.{0}.RESPONSE";
     }
 }
