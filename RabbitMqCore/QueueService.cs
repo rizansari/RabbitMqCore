@@ -82,7 +82,7 @@ namespace RabbitMqCore
                 _log.LogDebug("Connecting to RabbitMQ endpoint {0}.", Options.HostName);
                 var factory = new ConnectionFactory
                 {
-                    HostName = Options.HostName,
+                    //HostName = Options.HostNames != null && Options.HostNames.Count > 0 ? Options.HostNames[0] : Options.HostName,
                     UserName = Options.UserName,
                     Password = Options.Password,
                     RequestedHeartbeat = TimeSpan.FromSeconds(Options.RequestedHeartbeat),
@@ -95,7 +95,15 @@ namespace RabbitMqCore
                     DispatchConsumersAsync = Options.DispatchConsumersAsync, //todo: can only be used with IAsyncBasicConsumer
                     ClientProvidedName = Options.ClientProvidedName
                 };
-                _connection = factory.CreateConnection();
+
+                if (Options.HostNames != null && Options.HostNames.Count > 0)
+                {
+                    _connection = factory.CreateConnection(Options.HostNames);
+                }
+                else
+                {
+                    _connection = factory.CreateConnection();
+                }
 
                 // connection events
                 _connection.ConnectionShutdown += Connection_ConnectionShutdown;

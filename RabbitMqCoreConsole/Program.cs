@@ -24,11 +24,15 @@ namespace RabbitMqCoreConsole
 
         private static Queue<string> _queue;
 
-        #region rpc
+        #region Cluster
         static void Main(string[] args)
         {
             try
             {
+
+                var hostnames = new List<string>();
+                hostnames.Add("rabbit01");
+                hostnames.Add("rabbit02");
                 //setup our DI
                 var serviceProvider = new ServiceCollection()
                     .AddLogging(loggingBuilder =>
@@ -39,6 +43,7 @@ namespace RabbitMqCoreConsole
                     .AddRabbitMQCore(options =>
                     {
                         options.HostName = "localhost";
+                        //options.HostNames = hostnames;
                         options.UserName = "client";
                         options.Password = "client";
                         options.AutomaticRecoveryEnabled = true;
@@ -57,25 +62,37 @@ namespace RabbitMqCoreConsole
 
                 rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
 
-                Thread thread = new Thread(new ThreadStart(RunRpcClient));
-                thread.Start();
-
-                var rpcServer = rmq.CreateRpcServer(options =>
+                if (args[0] == "p")
                 {
-                    options.RpcName = "TEST_RPC";
-                });
+                    Thread thread = new Thread(new ThreadStart(RunPublisher));
+                    thread.Start();
 
-                rpcServer.Subscribe(request =>
+                    Console.ReadLine();
+
+                    _source.Cancel();
+                }
+
+                if (args[0] == "s")
                 {
-                    var obj = JsonConvert.DeserializeObject<SimpleObject>(request.Message);
-                    obj.Name = "Response";
-                    rpcServer.Respond(new RabbitMessageOutbound() { CorrelationId = request.CorrelationId, Message = JsonConvert.SerializeObject(obj) });
-                    Console.WriteLine("message:{0}", request.Message);
-                });
+                    _subscriber = rmq.CreateSubscriber(options =>
+                    {
+                        options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                        options.ExchangeName = "exchange.1";
+                        options.QueueName = "queue.1";
+                        options.AutoAck = true;
+                    });
+                    _subscriber.Subscribe(opt =>
+                    {
+                        Console.WriteLine("sub called: {0} redelivered: {1}", opt.ToString(), opt.Redelivered);
+                    });
+
+                    Console.ReadLine();
+
+                    _subscriber.Unsubscribe();
+                }
+
 
                 Console.ReadLine();
-
-                rpcServer.Dispose();
 
                 _source.Cancel();
             }
@@ -85,14 +102,21 @@ namespace RabbitMqCoreConsole
             }
         }
 
-        private static void RunRpcClient()
+        private static void RunPublisher()
         {
             try
             {
-                var rpcClient = rmq.CreateRpcClient(options =>
+                var pub = rmq.CreatePublisher(options =>
                 {
-                    options.RpcName = "TEST_RPC";
+                    options.ExchangeOrQueue = RabbitMqCore.Enums.ExchangeOrQueue.Exchange;
+                    options.ExchangeName = "exchange.1";
+                    options.ExchangeType = RabbitMqCore.Enums.ExchangeType.fanout;
+                    options.MandatoryPublish = true;
+                    options.RecreateIfFailed = true;
                 });
+
+                pub.OnMessageFailed += Pub_OnMessageFailedOrReturned;
+                pub.OnMessageReturn += Pub_OnMessageFailedOrReturned;
 
                 SimpleObject obj = null;
                 RabbitMessageOutbound message = null;
@@ -102,16 +126,14 @@ namespace RabbitMqCoreConsole
                 {
                     try
                     {
-                        obj = new SimpleObject() { ID = count++, Name = "Request" };
+                        obj = new SimpleObject() { ID = count++, Name = "One" };
                         message = new RabbitMessageOutbound()
                         {
                             CorrelationId = $"CorrelationId:{obj.ID}",
                             Message = JsonConvert.SerializeObject(obj)
                         };
-                        rpcClient.Call(message, response => {
-                            Console.WriteLine("rpc response: {0}", response.Message);
-                        }, 10000);
-                        Console.WriteLine("rpc request: {0}", message.Message);
+                        pub.SendMessage(message);
+                        Console.WriteLine("pub called: {0}", message.Message);
                         Thread.Sleep(2000);
                     }
                     catch (OutboundMessageFailedException ex)
@@ -131,17 +153,137 @@ namespace RabbitMqCoreConsole
                     }
                 }
 
-                rpcClient.Dispose();
+                pub.Dispose();
 
-                Console.WriteLine("rpc count: {0}", count - 1);
+                Console.WriteLine("pub count: {0}", count - 1);
 
                 Console.WriteLine("token cancelled");
             }
             catch (Exception ex)
             {
-                Console.WriteLine("create rpc client failed");
+                Console.WriteLine("create publisher failed");
             }
         }
+        #endregion
+
+        #region rpc
+        //static void MainRPC(string[] args)
+        //{
+        //    try
+        //    {
+        //        //setup our DI
+        //        var serviceProvider = new ServiceCollection()
+        //            .AddLogging(loggingBuilder =>
+        //            {
+        //                loggingBuilder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+        //                loggingBuilder.AddLog4Net();
+        //            })
+        //            .AddRabbitMQCore(options =>
+        //            {
+        //                options.HostName = "localhost";
+        //                options.UserName = "client";
+        //                options.Password = "client";
+        //                options.AutomaticRecoveryEnabled = true;
+        //                options.TopologyRecoveryEnabled = true;
+        //                options.NetworkRecoveryInterval = TimeSpan.FromSeconds(5);
+        //                options.DebugMode = true;
+        //                options.ClientProvidedName = "rabbitmq-console";
+        //            })
+        //            .BuildServiceProvider();
+
+        //        var logger = serviceProvider.GetService<ILoggerFactory>()
+        //            .CreateLogger<Program>();
+
+        //        // get QueueService
+        //        rmq = serviceProvider.GetRequiredService<IQueueService>();
+
+        //        rmq.OnConnectionShutdown += Rmq_OnConnectionShutdown;
+
+        //        Thread thread = new Thread(new ThreadStart(RunRpcClient));
+        //        thread.Start();
+
+        //        var rpcServer = rmq.CreateRpcServer(options =>
+        //        {
+        //            options.RpcName = "TEST_RPC";
+        //        });
+
+        //        rpcServer.Subscribe(request =>
+        //        {
+        //            var obj = JsonConvert.DeserializeObject<SimpleObject>(request.Message);
+        //            obj.Name = "Response";
+        //            rpcServer.Respond(new RabbitMessageOutbound() { CorrelationId = request.CorrelationId, Message = JsonConvert.SerializeObject(obj) });
+        //            Console.WriteLine("message:{0}", request.Message);
+        //        });
+
+        //        Console.ReadLine();
+
+        //        rpcServer.Dispose();
+
+        //        _source.Cancel();
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine(ex);
+        //    }
+        //}
+
+        //private static void RunRpcClient()
+        //{
+        //    try
+        //    {
+        //        var rpcClient = rmq.CreateRpcClient(options =>
+        //        {
+        //            options.RpcName = "TEST_RPC";
+        //        });
+
+        //        SimpleObject obj = null;
+        //        RabbitMessageOutbound message = null;
+
+        //        int count = 1;
+        //        while (!_token.IsCancellationRequested)
+        //        {
+        //            try
+        //            {
+        //                obj = new SimpleObject() { ID = count++, Name = "Request" };
+        //                message = new RabbitMessageOutbound()
+        //                {
+        //                    CorrelationId = $"CorrelationId:{obj.ID}",
+        //                    Message = JsonConvert.SerializeObject(obj)
+        //                };
+        //                rpcClient.Call(message, response => {
+        //                    Console.WriteLine("rpc response: {0}", response.Message);
+        //                }, 10000);
+        //                Console.WriteLine("rpc request: {0}", message.Message);
+        //                Thread.Sleep(2000);
+        //            }
+        //            catch (OutboundMessageFailedException ex)
+        //            {
+        //                Console.WriteLine("OutboundMessageFailedException Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+        //                Thread.Sleep(2000);
+        //            }
+        //            catch (NotConnectedException ex)
+        //            {
+        //                Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+        //                Thread.Sleep(2000);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                Console.WriteLine("Message failed {0}", obj.ID);
+        //                Thread.Sleep(2000);
+        //            }
+        //        }
+
+        //        rpcClient.Dispose();
+
+        //        Console.WriteLine("rpc count: {0}", count - 1);
+
+        //        Console.WriteLine("token cancelled");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        Console.WriteLine("create rpc client failed");
+        //    }
+        //}
         #endregion
 
         #region revamped library
