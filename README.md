@@ -1,6 +1,6 @@
 # RabbitMQ Client library for .NET Core
 
-Library Version: v3.1.1
+Library Version: v3.2.0
 
 Breaking changes in version 3
 
@@ -14,6 +14,9 @@ Install-Package RabbitMQ.NET -Version 2.1.0
 ```powershell
 Install-Package RabbitMQ.NET
 ```
+
+## What's New
+Now support **RPC** in a very easy and intuitive manner
 
 ## Usage
 
@@ -138,6 +141,79 @@ var sub6 = rmq.CreateSubscriber(options =>
     options.Arguments.Add(ArgumentStrings.XMessageTTL, 5000);
 });
 sub6.Subscribe(opt => { Console.WriteLine("sub 6 called: {0}", opt.ToString()); });
+```
+
+## RPC
+### Server
+```
+        var rpcServer = rmq.CreateRpcServer(options =>
+        {
+            options.RpcName = "TEST_RPC";
+        });
+
+        rpcServer.Subscribe(request =>
+        {
+            // get request object
+            var obj = JsonConvert.DeserializeObject<SimpleObject>(request.Message);
+
+            // response with response object
+            rpcServer.Respond(new RabbitMessageOutbound() 
+            { 
+                CorrelationId = request.CorrelationId, 
+                Message = JsonConvert.SerializeObject(obj) 
+            });
+            
+        });
+```
+
+### Client
+```
+        var rpcClient = rmq.CreateRpcClient(options =>
+        {
+            options.RpcName = "TEST_RPC";
+        });
+
+        SimpleObject obj = null;
+        RabbitMessageOutbound message = null;
+
+        int count = 1;
+        while (true)
+        {
+            try
+            {
+                obj = new SimpleObject() { ID = count++, Name = "Request" };
+                message = new RabbitMessageOutbound()
+                {
+                    CorrelationId = $"CorrelationId:{obj.ID}",
+                    Message = JsonConvert.SerializeObject(obj)
+                };
+
+                rpcClient.Call(message, response => 
+                {
+                    // response received from RPC Server
+                    Console.WriteLine("rpc response: {0}", response.Message);
+                }, 10000);
+                Console.WriteLine("rpc request: {0}", message.Message);
+                Thread.Sleep(2000);
+            }
+            catch (OutboundMessageFailedException ex)
+            {
+                Console.WriteLine("Message failed {0}:{1}", obj.ID, ex.RabbitMessageOutbound.Message);
+                Thread.Sleep(2000);
+            }
+            catch (NotConnectedException ex)
+            {
+                Console.WriteLine("NotConnectedException Message failed {0}", obj.ID);
+                Thread.Sleep(2000);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Message failed {0}", obj.ID);
+                Thread.Sleep(2000);
+            }
+        }
+
+        rpcClient.Dispose();
 ```
 
 ## License
